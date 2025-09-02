@@ -1,0 +1,19 @@
+{
+  "GUILD_NAME": "Small Scale",
+  "ROLES": {
+    "CLOCKED_IN": "Clocked In",
+    "ADMIN": "Admin",
+    "BOT": "Small Scale Bot"
+  },
+  "CHANNELS": {
+    "PARTY_FINDER": "party-finder",
+    "STAFF_COMMANDS": "staff-commands"
+  },
+  "TIMERS": {
+    "AUTO_CLOCK_OUT_HOURS": 4,
+    "CLEANUP_INTERVAL_MINUTES": 60
+  },
+  "DATABASE": {
+    "COLLECTION_NAME": "roster"
+  }
+}
