@@ -21,16 +21,14 @@ if (!DISCORD_TOKEN || !PUBLIC_KEY) {
 if (!MONGO_URI) {
   console.error("MONGO_URI environment variable is required");
   process.exit(1);
-} else {
 }
-
 // Root directory
 const ROOT_DIR = process.cwd();
 
 /*************************
  *   MONGODB CONNECTION
  *************************/
-const MONGO_CLIENT = new MongoClient(encodeURIComponent(MONGO_URI), {
+const MONGO_CLIENT = new MongoClient(MONGO_URI, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -91,8 +89,17 @@ async function main() {
   await loadEvents(database);
 
   // 4) Finally log in to Discord (this makes the bot go online)
-  await client.login(DISCORD_TOKEN);
-  console.log("Small Scale Bot logged in!");
+  try {
+    await client.login(DISCORD_TOKEN);
+    console.log("✅ Small Scale Bot logged in successfully!");
+  } catch (error) {
+    console.error("❌ Failed to login to Discord:");
+    console.error("   - Check your DISCORD_TOKEN in .env file");
+    console.error("   - Make sure the token is valid and not expired");
+    console.error("   - Verify the bot has proper permissions");
+    console.error(`   Error: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 /*************************

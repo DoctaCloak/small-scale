@@ -12,7 +12,8 @@
     "start": "node app.js",
     "start:debug": "node --inspect-brk app.js",
     "register": "node deploy-commands.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "test-token": "node test-token.js"
   },
   "author": "Nasgarth",
   "license": "MIT",
