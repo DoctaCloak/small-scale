@@ -44,6 +44,8 @@ let database = null;
  * Connects to MongoDB and sets the global `database` variable.
  */
 async function connectDatabase() {
+  console.log("MongoDB URI:", MONGO_URI);
+  console.log("Mongo Client:", MONGO_CLIENT);
   await MONGO_CLIENT.connect();
   database = MONGO_CLIENT.db("smallscale");
   // Ping for sanity check
