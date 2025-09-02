@@ -21,6 +21,7 @@ if (!DISCORD_TOKEN || !PUBLIC_KEY) {
 if (!MONGO_URI) {
   console.error("MONGO_URI environment variable is required");
   process.exit(1);
+} else {
 }
 
 // Root directory
@@ -29,7 +30,7 @@ const ROOT_DIR = process.cwd();
 /*************************
  *   MONGODB CONNECTION
  *************************/
-const MONGO_CLIENT = new MongoClient(MONGO_URI, {
+const MONGO_CLIENT = new MongoClient(encodeURIComponent(MONGO_URI), {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
