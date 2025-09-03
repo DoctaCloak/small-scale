@@ -473,12 +473,12 @@ async function createClockButtons(channel, database) {
         .setCustomId("clock_in")
         .setLabel("🕐 Clock In")
         .setStyle(ButtonStyle.Success)
-        .setDisabled(false), // Will be updated based on user state
+        .setDisabled(false),
       new ButtonBuilder()
         .setCustomId("clock_out")
         .setLabel("🕒 Clock Out")
         .setStyle(ButtonStyle.Danger)
-        .setDisabled(false) // Will be updated based on user state
+        .setDisabled(false)
     );
 
     await clockMessage.edit({ content, components: [row] });
@@ -488,7 +488,7 @@ async function createClockButtons(channel, database) {
   }
 }
 
-async function updateClockButtonsForUser(channel, userId, database) {
+export async function updateClockButtonsForUser(channel, userId, database) {
   console.log(`🔄 Updating clock buttons for user ${userId}`);
 
   try {
@@ -503,20 +503,9 @@ async function updateClockButtonsForUser(channel, userId, database) {
       return;
     }
 
-    // Get user's current clock status
-    const rosterCollection = database.collection(
-      config.DATABASE.COLLECTION_NAME
-    );
-    const currentTime = new Date();
-    const userEntry = await rosterCollection.findOne({
-      userId: userId,
-      guildId: channel.guild.id,
-      clockOutTime: { $gt: currentTime },
-    });
+    // We no longer need to check user status for disabling, as buttons are shared
+    // Keep both buttons enabled for all users; handler will manage validity
 
-    const isClockedIn = !!userEntry;
-
-    // Update button states based on user's status
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import(
       "discord.js"
     );
@@ -526,12 +515,12 @@ async function updateClockButtonsForUser(channel, userId, database) {
         .setCustomId("clock_in")
         .setLabel("🕐 Clock In")
         .setStyle(ButtonStyle.Success)
-        .setDisabled(isClockedIn), // Disable if already clocked in
+        .setDisabled(false),
       new ButtonBuilder()
         .setCustomId("clock_out")
         .setLabel("🕒 Clock Out")
         .setStyle(ButtonStyle.Danger)
-        .setDisabled(!isClockedIn) // Disable if not clocked in
+        .setDisabled(false)
     );
 
     await clockMessage.edit({
@@ -539,9 +528,7 @@ async function updateClockButtonsForUser(channel, userId, database) {
       components: [row],
     });
 
-    console.log(
-      `✅ Updated clock buttons for user ${userId} (clocked in: ${isClockedIn})`
-    );
+    console.log(`✅ Updated clock buttons - both enabled for shared access`);
   } catch (error) {
     console.error(
       `❌ Failed to update clock buttons for user ${userId}:`,

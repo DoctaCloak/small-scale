@@ -1,6 +1,7 @@
 import { ChannelType, PermissionsBitField } from "discord.js";
 import fs from "fs";
 import path from "path";
+import { updateRosterMessage, updateClockButtonsForUser } from "./onReady.js";
 
 // Load configuration
 const configPath = path.resolve(
@@ -207,13 +208,11 @@ async function handleClockIn(
 
     // Update the roster message in party-finder channel if it exists
     if (partyFinderChannel) {
-      const { updateRosterMessage } = await import("./onReady.js");
       await updateRosterMessage(partyFinderChannel, database);
     }
 
     // Update clock buttons to reflect new state
     if (clockChannel) {
-      const { updateClockButtonsForUser } = await import("./onReady.js");
       await updateClockButtonsForUser(clockChannel, user.id, database);
     }
 
@@ -269,13 +268,11 @@ async function handleClockOut(
 
     // Update the roster message in party-finder channel if it exists
     if (partyFinderChannel) {
-      const { updateRosterMessage } = await import("./onReady.js");
       await updateRosterMessage(partyFinderChannel, database);
     }
 
     // Update clock buttons to reflect new state
     if (clockChannel) {
-      const { updateClockButtonsForUser } = await import("./onReady.js");
       await updateClockButtonsForUser(clockChannel, user.id, database);
     }
 
@@ -384,7 +381,6 @@ async function handleContentSelection(
       console.log(
         `[Content Selection] Updating roster display for ${user.tag}`
       );
-      const { updateRosterMessage } = await import("./onReady.js");
       await updateRosterMessage(partyFinderChannel, database);
     }
 
