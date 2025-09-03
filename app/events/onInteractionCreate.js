@@ -124,10 +124,25 @@ export default async function onInteractionCreate(client, database) {
       }
     } catch (error) {
       console.error("Error handling button interaction:", error);
-      await interaction.reply({
-        content: "An error occurred while processing your request.",
-        ephemeral: true,
-      });
+
+      // Check if interaction has already been acknowledged
+      if (interaction.replied) {
+        console.log("Interaction already replied to, skipping error response");
+        // Don't try to respond again if already replied
+        return;
+      }
+
+      if (interaction.deferred) {
+        await interaction.followUp({
+          content: "An error occurred while processing your request.",
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: "An error occurred while processing your request.",
+          ephemeral: true,
+        });
+      }
     }
   });
 }
@@ -147,65 +162,76 @@ async function handleClockIn(
     currentTime.getTime() + AUTO_CLOCK_OUT_HOURS * 60 * 60 * 1000
   );
 
-  // Check if user is already clocked in
-  const existingEntry = await rosterCollection.findOne({
-    userId: user.id,
-    guildId: interaction.guild.id,
-    clockOutTime: { $gt: currentTime },
-  });
+  try {
+    // Check if user is already clocked in
+    const existingEntry = await rosterCollection.findOne({
+      userId: user.id,
+      guildId: interaction.guild.id,
+      clockOutTime: { $gt: currentTime },
+    });
 
-  if (existingEntry) {
-    const existingClockOutTime = new Date(existingEntry.clockOutTime);
-    const timeLeftMs = existingClockOutTime.getTime() - currentTime.getTime();
-    const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60));
-    const minutesLeft = Math.floor(
-      (timeLeftMs % (1000 * 60 * 60)) / (1000 * 60)
-    );
+    if (existingEntry) {
+      const existingClockOutTime = new Date(existingEntry.clockOutTime);
+      const timeLeftMs = existingClockOutTime.getTime() - currentTime.getTime();
+      const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60));
+      const minutesLeft = Math.floor(
+        (timeLeftMs % (1000 * 60 * 60)) / (1000 * 60)
+      );
 
-    // Calculate local time for better user experience
-    const localClockOutTime = new Date(currentTime.getTime() + timeLeftMs);
+      // Calculate local time for better user experience
+      const localClockOutTime = new Date(currentTime.getTime() + timeLeftMs);
 
-    return await interaction.reply({
-      content: `You're already clocked in! You have ${hoursLeft}h ${minutesLeft}m remaining.\n\nYou'll be automatically clocked out at approximately ${localClockOutTime.toLocaleTimeString(
+      return await interaction.reply({
+        content: `You're already clocked in! You have ${hoursLeft}h ${minutesLeft}m remaining.\n\nYou'll be automatically clocked out at approximately ${localClockOutTime.toLocaleTimeString(
+          [],
+          { hour: "2-digit", minute: "2-digit" }
+        )} (your local time).`,
+        ephemeral: true,
+      });
+    }
+
+    // Add user to roster in database
+    await rosterCollection.insertOne({
+      userId: user.id,
+      guildId: interaction.guild.id,
+      displayName: member.displayName,
+      clockInTime: currentTime,
+      clockOutTime: clockOutTime,
+      createdAt: currentTime,
+    });
+
+    // Add role to user
+    if (!member.roles.cache.has(clockedInRole.id)) {
+      await member.roles.add(clockedInRole);
+    }
+
+    // Update the roster message in party-finder channel if it exists
+    if (partyFinderChannel) {
+      await updateRosterMessage(partyFinderChannel, database);
+    }
+
+    // Update clock buttons to reflect new state
+    if (clockChannel) {
+      const { updateClockButtonsForUser } = await import("./onReady.js");
+      await updateClockButtonsForUser(clockChannel, user.id, database);
+    }
+
+    // Calculate local time for display
+    const localClockOutTime = new Date(clockOutTime.getTime());
+
+    await interaction.reply({
+      content: `✅ You've been clocked in for ${AUTO_CLOCK_OUT_HOURS} hours! \n\nYou'll be automatically clocked out at approximately ${localClockOutTime.toLocaleTimeString(
         [],
         { hour: "2-digit", minute: "2-digit" }
-      )} (your local time).`,
+      )} (your local time).\n\nYou now have access to the party-finder channel!`,
       ephemeral: true,
     });
+
+    console.log(`${user.tag} clocked in at ${currentTime.toISOString()}`);
+  } catch (error) {
+    console.error("Error in handleClockIn:", error);
+    throw error; // Re-throw to be handled by the main error handler
   }
-
-  // Add user to roster in database
-  await rosterCollection.insertOne({
-    userId: user.id,
-    guildId: interaction.guild.id,
-    displayName: member.displayName,
-    clockInTime: currentTime,
-    clockOutTime: clockOutTime,
-    createdAt: currentTime,
-  });
-
-  // Add role to user
-  if (!member.roles.cache.has(clockedInRole.id)) {
-    await member.roles.add(clockedInRole);
-  }
-
-  // Update the roster message in party-finder channel if it exists
-  if (partyFinderChannel) {
-    await updateRosterMessage(partyFinderChannel, database);
-  }
-
-  // Calculate local time for display
-  const localClockOutTime = new Date(clockOutTime.getTime());
-
-  await interaction.reply({
-    content: `✅ You've been clocked in for ${AUTO_CLOCK_OUT_HOURS} hours! \n\nYou'll be automatically clocked out at approximately ${localClockOutTime.toLocaleTimeString(
-      [],
-      { hour: "2-digit", minute: "2-digit" }
-    )} (your local time).\n\nYou now have access to the party-finder channel!`,
-    ephemeral: true,
-  });
-
-  console.log(`${user.tag} clocked in at ${currentTime.toISOString()}`);
 }
 
 async function handleClockOut(
@@ -220,36 +246,47 @@ async function handleClockOut(
   const member = interaction.member;
   const currentTime = new Date();
 
-  // Remove user from roster in database
-  const deleteResult = await rosterCollection.deleteMany({
-    userId: user.id,
-    guildId: interaction.guild.id,
-    clockOutTime: { $gt: currentTime },
-  });
+  try {
+    // Remove user from roster in database
+    const deleteResult = await rosterCollection.deleteMany({
+      userId: user.id,
+      guildId: interaction.guild.id,
+      clockOutTime: { $gt: currentTime },
+    });
 
-  if (deleteResult.deletedCount === 0) {
-    return await interaction.reply({
-      content: "You're not currently clocked in.",
+    if (deleteResult.deletedCount === 0) {
+      return await interaction.reply({
+        content: "You're not currently clocked in.",
+        ephemeral: true,
+      });
+    }
+
+    // Remove role from user
+    if (member.roles.cache.has(clockedInRole.id)) {
+      await member.roles.remove(clockedInRole);
+    }
+
+    // Update the roster message in party-finder channel if it exists
+    if (partyFinderChannel) {
+      await updateRosterMessage(partyFinderChannel, database);
+    }
+
+    // Update clock buttons to reflect new state
+    if (clockChannel) {
+      const { updateClockButtonsForUser } = await import("./onReady.js");
+      await updateClockButtonsForUser(clockChannel, user.id, database);
+    }
+
+    await interaction.reply({
+      content: "👋 You have been clocked out successfully!",
       ephemeral: true,
     });
+
+    console.log(`${user.tag} clocked out at ${currentTime.toISOString()}`);
+  } catch (error) {
+    console.error("Error in handleClockOut:", error);
+    throw error; // Re-throw to be handled by the main error handler
   }
-
-  // Remove role from user
-  if (member.roles.cache.has(clockedInRole.id)) {
-    await member.roles.remove(clockedInRole);
-  }
-
-  // Update the roster message in party-finder channel if it exists
-  if (partyFinderChannel) {
-    await updateRosterMessage(partyFinderChannel, database);
-  }
-
-  await interaction.reply({
-    content: "👋 You have been clocked out successfully!",
-    ephemeral: true,
-  });
-
-  console.log(`${user.tag} clocked out at ${currentTime.toISOString()}`);
 }
 
 async function handleContentSelection(
@@ -358,16 +395,23 @@ async function handleContentSelection(
     );
   } catch (error) {
     console.error("Error handling content selection:", error);
-    if (!interaction.replied && !interaction.deferred) {
+    if (interaction.replied) {
+      console.log(
+        "Content selection interaction already replied to, skipping error response"
+      );
+      return;
+    }
+    if (!interaction.deferred) {
       await interaction.reply({
         content:
           "❌ An error occurred while updating your content preferences.",
         ephemeral: true,
       });
     } else {
-      await interaction.editReply({
+      await interaction.followUp({
         content:
           "❌ An error occurred while updating your content preferences.",
+        ephemeral: true,
       });
     }
   }

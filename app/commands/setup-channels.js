@@ -42,6 +42,11 @@ export default {
       subcommand
         .setName("refresh-content")
         .setDescription("Refresh the content selection buttons in party-finder")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("reset-buttons")
+        .setDescription("Reset clock buttons to default state (both enabled)")
     ),
   async execute(interaction, context) {
     try {
@@ -177,6 +182,26 @@ export default {
         );
         await interaction.editReply({
           content: "✅ Content selection buttons refreshed successfully!",
+        });
+      } else if (subcommand === "reset-buttons") {
+        await interaction.editReply({
+          content: "🔄 Resetting clock buttons to default state...",
+        });
+
+        // Reset clock buttons to both enabled state
+        const clockChannel = guild.channels.cache.find(
+          (ch) => ch.name === config.CHANNELS.CLOCK_CHANNEL && ch.type === 0
+        );
+
+        if (clockChannel) {
+          const { createClockButtons } = await import(
+            "../../app/events/onReady.js"
+          );
+          await createClockButtons(clockChannel, db);
+        }
+
+        await interaction.editReply({
+          content: "✅ Clock buttons reset to default state (both enabled)!",
         });
 
         // Update roster in party-finder channel

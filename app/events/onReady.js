@@ -464,7 +464,7 @@ async function createClockButtons(channel, database) {
       );
     }
 
-    // Add buttons to the message
+    // Add buttons to the message - these will be updated dynamically based on user state
     const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import(
       "discord.js"
     );
@@ -472,17 +472,81 @@ async function createClockButtons(channel, database) {
       new ButtonBuilder()
         .setCustomId("clock_in")
         .setLabel("🕐 Clock In")
-        .setStyle(ButtonStyle.Success),
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(false), // Will be updated based on user state
       new ButtonBuilder()
         .setCustomId("clock_out")
         .setLabel("🕒 Clock Out")
         .setStyle(ButtonStyle.Danger)
+        .setDisabled(false) // Will be updated based on user state
     );
 
     await clockMessage.edit({ content, components: [row] });
     console.log(`✅ Clock buttons set up successfully`);
   } catch (error) {
     console.error(`❌ Failed to set up clock buttons:`, error);
+  }
+}
+
+async function updateClockButtonsForUser(channel, userId, database) {
+  console.log(`🔄 Updating clock buttons for user ${userId}`);
+
+  try {
+    // Find the clock button message
+    const pins = await channel.messages.fetchPinned();
+    const clockMessage = pins.find(
+      (msg) => msg.author.id === channel.guild.members.me.id
+    );
+
+    if (!clockMessage) {
+      console.log(`⚠️ No clock message found to update`);
+      return;
+    }
+
+    // Get user's current clock status
+    const rosterCollection = database.collection(
+      config.DATABASE.COLLECTION_NAME
+    );
+    const currentTime = new Date();
+    const userEntry = await rosterCollection.findOne({
+      userId: userId,
+      guildId: channel.guild.id,
+      clockOutTime: { $gt: currentTime },
+    });
+
+    const isClockedIn = !!userEntry;
+
+    // Update button states based on user's status
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import(
+      "discord.js"
+    );
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("clock_in")
+        .setLabel("🕐 Clock In")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(isClockedIn), // Disable if already clocked in
+      new ButtonBuilder()
+        .setCustomId("clock_out")
+        .setLabel("🕒 Clock Out")
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(!isClockedIn) // Disable if not clocked in
+    );
+
+    await clockMessage.edit({
+      content: clockMessage.content,
+      components: [row],
+    });
+
+    console.log(
+      `✅ Updated clock buttons for user ${userId} (clocked in: ${isClockedIn})`
+    );
+  } catch (error) {
+    console.error(
+      `❌ Failed to update clock buttons for user ${userId}:`,
+      error
+    );
   }
 }
 
