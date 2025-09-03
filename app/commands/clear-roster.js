@@ -9,6 +9,13 @@ const configPath = path.resolve(
 );
 const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 
+// Import verification function (will be passed from main)
+let verifyAndCreateMissingChannels = null;
+
+export function setChannelVerificationFunction(func) {
+  verifyAndCreateMissingChannels = func;
+}
+
 export default {
   data: new SlashCommandBuilder()
     .setName("clear-roster")

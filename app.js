@@ -148,6 +148,25 @@ async function loadEvents(db) {
       console.error(`Event file ${file} is missing a default export function.`);
     }
   }
+
+  // Pass the verification function to commands that need it
+  try {
+    const { setChannelVerificationFunction } = await import(
+      "./app/commands/setup-channels.js"
+    );
+    const { verifyAndCreateMissingChannels } = await import(
+      "./app/events/onReady.js"
+    );
+
+    if (setChannelVerificationFunction && verifyAndCreateMissingChannels) {
+      setChannelVerificationFunction(verifyAndCreateMissingChannels);
+      console.log(
+        "✅ Channel verification function passed to setup-channels command"
+      );
+    }
+  } catch (error) {
+    console.error("❌ Failed to set up channel verification function:", error);
+  }
 }
 
 // Execute our main function
