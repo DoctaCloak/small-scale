@@ -12,6 +12,7 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 const CLOCK_CHANNEL_NAME = config.CHANNELS.CLOCK_CHANNEL;
 const PARTY_FINDER_CHANNEL_NAME = config.CHANNELS.PARTY_FINDER;
 const CLOCKED_IN_ROLE_NAME = config.ROLES.CLOCKED_IN;
+const CONTENT_TYPES = config.ROLES.CONTENT_TYPES;
 const AUTO_CLOCK_OUT_HOURS = config.TIMERS.AUTO_CLOCK_OUT_HOURS;
 
 export default async function onInteractionCreate(client, database) {
@@ -111,6 +112,14 @@ export default async function onInteractionCreate(client, database) {
           partyFinderChannel,
           database,
           clockChannel
+        );
+      } else if (customId.startsWith("content_")) {
+        await handleContentSelection(
+          interaction,
+          customId,
+          clockedInRole,
+          partyFinderChannel,
+          database
         );
       }
     } catch (error) {
@@ -224,59 +233,100 @@ async function handleClockOut(
   console.log(`${user.tag} clocked out at ${currentTime.toISOString()}`);
 }
 
-async function updateRosterMessage(channel, database) {
-  const rosterCollection = database.collection(config.DATABASE.COLLECTION_NAME);
+async function handleContentSelection(
+  interaction,
+  customId,
+  clockedInRole,
+  partyFinderChannel,
+  database
+) {
+  const user = interaction.user;
+  const member = interaction.member;
+  const guild = interaction.guild;
 
-  // Get current roster from database
-  const currentTime = new Date();
-  const rosterEntries = await rosterCollection
-    .find({
-      guildId: channel.guild.id,
-      clockOutTime: { $gt: currentTime },
-    })
-    .toArray();
-
-  const rosterUsers = rosterEntries.map((entry) => {
-    const member = channel.guild.members.cache.get(entry.userId);
-    return member ? member.displayName : entry.displayName;
-  });
-
-  const content =
-    rosterUsers.length > 0
-      ? `**✅ Now Playing (${rosterUsers.length}):**\n${rosterUsers
-          .map((name) => `- ${name}`)
-          .join("\n")}`
-      : "**✅ Now Playing:**\nNobody is clocked in.";
-
-  // Find existing pinned message
-  const pins = await channel.messages.fetchPinned();
-  let rosterMessage = pins.find(
-    (msg) => msg.author.id === channel.guild.members.me.id
-  );
-
-  if (rosterMessage) {
-    // Update existing message
-    await rosterMessage.edit({ content });
-  } else {
-    // Create new message and pin it
-    rosterMessage = await channel.send({ content });
-    await rosterMessage.pin();
+  // Check if user has the Clocked In role
+  if (!member.roles.cache.has(clockedInRole.id)) {
+    return await interaction.reply({
+      content:
+        "❌ You must be clocked in to select content types. Use the buttons in #clock-station first.",
+      ephemeral: true,
+    });
   }
 
-  // Add buttons to the message
-  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import(
-    "discord.js"
-  );
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("clock_in")
-      .setLabel("Clock In ✅")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("clock_out")
-      .setLabel("Clock Out 👋")
-      .setStyle(ButtonStyle.Danger)
-  );
+  try {
+    await interaction.deferReply({ ephemeral: true });
 
-  await rosterMessage.edit({ content, components: [row] });
+    const contentType = customId.replace("content_", "").toUpperCase();
+    let actionMessage = "";
+    let roleChanged = false;
+
+    if (contentType === "CLEAR") {
+      // Remove all content type roles
+      const contentRolesToRemove = [];
+      for (const [key, roleName] of Object.entries(CONTENT_TYPES)) {
+        const role = guild.roles.cache.find((r) => r.name === roleName);
+        if (role && member.roles.cache.has(role.id)) {
+          contentRolesToRemove.push(role);
+        }
+      }
+
+      if (contentRolesToRemove.length > 0) {
+        await member.roles.remove(contentRolesToRemove);
+        actionMessage = `🗑️ Cleared all content type selections (${contentRolesToRemove.length} roles removed)`;
+        roleChanged = true;
+      } else {
+        actionMessage = "ℹ️ No content types were selected to clear.";
+      }
+    } else {
+      // Toggle specific content type role
+      const roleName = CONTENT_TYPES[contentType];
+      if (!roleName) {
+        actionMessage = "❌ Unknown content type.";
+      } else {
+        const role = guild.roles.cache.find((r) => r.name === roleName);
+        if (!role) {
+          actionMessage =
+            "❌ Content type role not found. Please contact an administrator.";
+        } else {
+          if (member.roles.cache.has(role.id)) {
+            // Remove role
+            await member.roles.remove(role);
+            actionMessage = `➖ Removed **${roleName}** from your content preferences`;
+            roleChanged = true;
+          } else {
+            // Add role
+            await member.roles.add(role);
+            actionMessage = `➕ Added **${roleName}** to your content preferences`;
+            roleChanged = true;
+          }
+        }
+      }
+    }
+
+    // Update roster display if roles were changed
+    if (roleChanged && partyFinderChannel) {
+      const { updateRosterMessage } = await import("./onReady.js");
+      await updateRosterMessage(partyFinderChannel, database);
+    }
+
+    await interaction.editReply({
+      content: actionMessage,
+    });
+
+    console.log(`[Content Selection] ${user.tag} - ${actionMessage}`);
+  } catch (error) {
+    console.error("Error handling content selection:", error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({
+        content:
+          "❌ An error occurred while updating your content preferences.",
+        ephemeral: true,
+      });
+    } else {
+      await interaction.editReply({
+        content:
+          "❌ An error occurred while updating your content preferences.",
+      });
+    }
+  }
 }

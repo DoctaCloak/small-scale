@@ -12,6 +12,7 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 const CLOCK_CHANNEL_NAME = config.CHANNELS.CLOCK_CHANNEL;
 const PARTY_FINDER_CHANNEL_NAME = config.CHANNELS.PARTY_FINDER;
 const CLOCKED_IN_ROLE_NAME = config.ROLES.CLOCKED_IN;
+const CONTENT_TYPES = config.ROLES.CONTENT_TYPES;
 
 export default async function onReady(client, database) {
   console.log(`🔄 onReady event triggered!`);
@@ -49,6 +50,17 @@ export default async function onReady(client, database) {
       }
     }
   }, config.TIMERS.CLEANUP_INTERVAL_MINUTES * 60 * 1000);
+}
+
+function getContentTypeColor(contentType) {
+  const colors = {
+    FULL_ROAM: 0xff6b6b, // Red
+    PLUNDER_GATHER: 0x4ecdc4, // Teal
+    CRYSTALS: 0x45b7d1, // Blue
+    HELLGATES: 0x96ceb4, // Green
+    ROADS: 0xffd93d, // Yellow
+  };
+  return colors[contentType] || 0x99aab5; // Default gray
 }
 
 async function initializeRosterSystem(guild, database) {
@@ -108,6 +120,26 @@ async function initializeRosterSystem(guild, database) {
     console.log(
       `✅ Found existing ${CLOCKED_IN_ROLE_NAME} role with ID: ${clockedInRole.id}`
     );
+  }
+
+  // Ensure content type roles exist
+  console.log(`📝 Checking content type roles...`);
+  const contentRoles = {};
+  for (const [key, roleName] of Object.entries(CONTENT_TYPES)) {
+    let role = guild.roles.cache.find((r) => r.name === roleName);
+    if (!role) {
+      try {
+        role = await guild.roles.create({
+          name: roleName,
+          color: getContentTypeColor(key),
+          mentionable: false,
+        });
+        console.log(`✅ Created ${roleName} role`);
+      } catch (error) {
+        console.error(`❌ Failed to create ${roleName} role:`, error);
+      }
+    }
+    contentRoles[key] = role;
   }
 
   // Ensure the clock-station channel exists (visible to everyone, read-only except for bot)
@@ -222,8 +254,13 @@ async function initializeRosterSystem(guild, database) {
     await createClockButtons(clockChannel, database);
   }
 
-  // Create roster display in the party-finder channel
+  // Create content selection buttons and roster display in the party-finder channel
   if (partyFinderChannel) {
+    await createContentSelectionButtons(
+      partyFinderChannel,
+      database,
+      contentRoles
+    );
     await updateRosterMessage(partyFinderChannel, database);
   }
 
@@ -449,6 +486,85 @@ async function createClockButtons(channel, database) {
   }
 }
 
+async function createContentSelectionButtons(channel, database, contentRoles) {
+  console.log(`🎮 Setting up content selection buttons in #${channel.name}`);
+
+  // Find existing content selection message (look for a message with content selection buttons)
+  const messages = await channel.messages.fetch({ limit: 10 });
+  let contentMessage = messages.find(
+    (msg) =>
+      msg.author.id === channel.guild.members.me.id &&
+      msg.content.includes("Select Content Type")
+  );
+
+  const content =
+    "**🎮 Content Selection**\n\n" +
+    "Choose what type of content you're interested in doing. You can select multiple options!\n\n" +
+    "• **Full Roam**: Open world exploration and casual activities\n" +
+    "• **Plunder & Gather**: Resource farming and gathering\n" +
+    "• **Crystals**: Crystal farming and combat\n" +
+    "• **Hellgates**: Group PvE content\n" +
+    "• **Roads**: Road clearing and territory control\n\n" +
+    "*Your selections will be displayed in the roster above.*";
+
+  try {
+    if (contentMessage) {
+      console.log(`📝 Updating existing content selection message`);
+      await contentMessage.edit({ content });
+    } else {
+      console.log(`📝 Creating new content selection message`);
+      contentMessage = await channel.send({ content });
+      console.log(
+        `✅ Created content selection message with ID: ${contentMessage.id}`
+      );
+    }
+
+    // Create button rows for content selection
+    const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import(
+      "discord.js"
+    );
+
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("content_full_roam")
+        .setLabel("🌍 Full Roam")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("content_plunder_gather")
+        .setLabel("⚒️ Plunder & Gather")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("content_crystals")
+        .setLabel("💎 Crystals")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("content_hellgates")
+        .setLabel("🔥 Hellgates")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("content_roads")
+        .setLabel("🛣️ Roads")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("content_clear")
+        .setLabel("🗑️ Clear All")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await contentMessage.edit({
+      content,
+      components: [row1, row2],
+    });
+
+    console.log(`✅ Content selection buttons set up successfully`);
+  } catch (error) {
+    console.error(`❌ Failed to set up content selection buttons:`, error);
+  }
+}
+
 export async function updateRosterMessage(channel, database) {
   const rosterCollection = database.collection(config.DATABASE.COLLECTION_NAME);
 
@@ -471,12 +587,21 @@ export async function updateRosterMessage(channel, database) {
         const member = channel.guild.members.cache.get(entry.userId);
         if (!member) return null;
 
-        // Try to detect roles/classes from member roles
+        // Try to detect roles/classes and content types from member roles
         const memberRoles = member.roles.cache
           .filter(
             (role) => role.name !== "@everyone" && role.name !== "Clocked In"
           )
           .map((role) => role.name);
+
+        // Separate content types from class roles
+        const contentTypeRoles = Object.values(CONTENT_TYPES);
+        const classRoles = memberRoles.filter(
+          (role) => !contentTypeRoles.includes(role)
+        );
+        const selectedContentTypes = memberRoles.filter((role) =>
+          contentTypeRoles.includes(role)
+        );
 
         // Common class/role patterns to look for
         const classPatterns = [
@@ -494,7 +619,7 @@ export async function updateRosterMessage(channel, database) {
 
         let detectedClass = null;
         for (const pattern of classPatterns) {
-          const matchingRole = memberRoles.find((role) => pattern.test(role));
+          const matchingRole = classRoles.find((role) => pattern.test(role));
           if (matchingRole) {
             detectedClass = matchingRole;
             break;
@@ -507,6 +632,21 @@ export async function updateRosterMessage(channel, database) {
         }
 
         const classInfo = detectedClass ? ` - ${detectedClass}` : "";
+
+        // Build content type display
+        const contentTypeEmojis = {
+          "Full Roam": "🌍",
+          "Plunder & Gather": "⚒️",
+          Crystals: "💎",
+          Hellgates: "🔥",
+          Roads: "🛣️",
+        };
+        const contentInfo =
+          selectedContentTypes.length > 0
+            ? ` [${selectedContentTypes
+                .map((type) => contentTypeEmojis[type] || type)
+                .join("")}]`
+            : "";
 
         // Calculate remaining time more precisely
         const timeLeftMs = Math.max(0, entry.clockOutTime - currentTime);
@@ -524,7 +664,7 @@ export async function updateRosterMessage(channel, database) {
           timeInfo = " (<1m)";
         }
 
-        return `• ${member.displayName}${classInfo}${timeInfo}`;
+        return `• ${member.displayName}${classInfo}${contentInfo}${timeInfo}`;
       })
     );
 
@@ -552,13 +692,18 @@ export async function updateRosterMessage(channel, database) {
 
 **💡 How to Use:**
 • Clock in/out using the buttons in #clock-station
-• Find players by their roles/classes above
+• Select content preferences using buttons below
+• Find players by their roles/classes and content interests
 • Auto clock-out after 4 hours
 • Use this roster to coordinate parties!
 
-**🎮 Tips:**
+**🎮 Content Types:**
+🌍 Full Roam • ⚒️ Plunder & Gather • 💎 Crystals
+🔥 Hellgates • 🛣️ Roads
+
+**🎯 Tips:**
 • Look for complementary roles for balanced parties
-• Check remaining time to plan your session
+• Check content preferences to find players for your activities
 • Message players directly if you need specific roles`;
 
   const fullContent = rosterContent + statsContent + helpContent;

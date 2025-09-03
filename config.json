@@ -3,7 +3,14 @@
   "ROLES": {
     "CLOCKED_IN": "Clocked In",
     "ADMIN": "Admin",
-    "BOT": "Small Scale Bot"
+    "BOT": "Small Scale Bot",
+    "CONTENT_TYPES": {
+      "FULL_ROAM": "Full Roam",
+      "PLUNDER_GATHER": "Plunder & Gather",
+      "CRYSTALS": "Crystals",
+      "HELLGATES": "Hellgates",
+      "ROADS": "Roads"
+    }
   },
   "CHANNELS": {
     "CLOCK_CHANNEL": "clock-station",

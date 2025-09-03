@@ -67,6 +67,14 @@ export default {
           });
         }
 
+        // Check current roster count from database
+        const rosterCollection = db.collection(config.DATABASE.COLLECTION_NAME);
+        const currentTime = new Date();
+        const rosterCount = await rosterCollection.countDocuments({
+          guildId: guild.id,
+          clockOutTime: { $gt: currentTime },
+        });
+
         // Run channel verification
         await interaction.editReply({
           content: "🔍 Scanning and creating missing channels...",
@@ -89,7 +97,8 @@ export default {
           }\n` +
           `• **Party Finder** (#${config.CHANNELS.PARTY_FINDER}): ${
             partyFinderChannel ? "✅ Created/Verified" : "❌ Failed"
-          }\n\n` +
+          }\n` +
+          `• **Current Roster**: ${rosterCount} active players\n\n` +
           `The party finder system is now ready to use!`;
 
         await interaction.editReply({
