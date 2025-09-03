@@ -155,8 +155,21 @@ async function handleClockIn(
   });
 
   if (existingEntry) {
+    const existingClockOutTime = new Date(existingEntry.clockOutTime);
+    const timeLeftMs = existingClockOutTime.getTime() - currentTime.getTime();
+    const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60));
+    const minutesLeft = Math.floor(
+      (timeLeftMs % (1000 * 60 * 60)) / (1000 * 60)
+    );
+
+    // Calculate local time for better user experience
+    const localClockOutTime = new Date(currentTime.getTime() + timeLeftMs);
+
     return await interaction.reply({
-      content: `You're already clocked in! You'll be automatically clocked out at ${clockOutTime.toLocaleString()}.`,
+      content: `You're already clocked in! You have ${hoursLeft}h ${minutesLeft}m remaining.\n\nYou'll be automatically clocked out at approximately ${localClockOutTime.toLocaleTimeString(
+        [],
+        { hour: "2-digit", minute: "2-digit" }
+      )} (your local time).`,
       ephemeral: true,
     });
   }
@@ -181,8 +194,14 @@ async function handleClockIn(
     await updateRosterMessage(partyFinderChannel, database);
   }
 
+  // Calculate local time for display
+  const localClockOutTime = new Date(clockOutTime.getTime());
+
   await interaction.reply({
-    content: `✅ You've been clocked in! You'll be automatically clocked out after ${AUTO_CLOCK_OUT_HOURS} hours.\n\nYou now have access to the party-finder channel!`,
+    content: `✅ You've been clocked in for ${AUTO_CLOCK_OUT_HOURS} hours! \n\nYou'll be automatically clocked out at approximately ${localClockOutTime.toLocaleTimeString(
+      [],
+      { hour: "2-digit", minute: "2-digit" }
+    )} (your local time).\n\nYou now have access to the party-finder channel!`,
     ephemeral: true,
   });
 
@@ -244,8 +263,13 @@ async function handleContentSelection(
   const member = interaction.member;
   const guild = interaction.guild;
 
+  console.log(`[Content Selection] Handling ${customId} for ${user.tag}`);
+
   // Check if user has the Clocked In role
   if (!member.roles.cache.has(clockedInRole.id)) {
+    console.log(
+      `[Content Selection] ${user.tag} not clocked in, denying access`
+    );
     return await interaction.reply({
       content:
         "❌ You must be clocked in to select content types. Use the buttons in #clock-station first.",
@@ -257,6 +281,7 @@ async function handleContentSelection(
     await interaction.deferReply({ ephemeral: true });
 
     const contentType = customId.replace("content_", "").toUpperCase();
+    console.log(`[Content Selection] Processing content type: ${contentType}`);
     let actionMessage = "";
     let roleChanged = false;
 
@@ -274,30 +299,42 @@ async function handleContentSelection(
         await member.roles.remove(contentRolesToRemove);
         actionMessage = `🗑️ Cleared all content type selections (${contentRolesToRemove.length} roles removed)`;
         roleChanged = true;
+        console.log(
+          `[Content Selection] Cleared ${contentRolesToRemove.length} roles for ${user.tag}`
+        );
       } else {
         actionMessage = "ℹ️ No content types were selected to clear.";
+        console.log(`[Content Selection] No roles to clear for ${user.tag}`);
       }
     } else {
       // Toggle specific content type role
       const roleName = CONTENT_TYPES[contentType];
       if (!roleName) {
         actionMessage = "❌ Unknown content type.";
+        console.log(`[Content Selection] Unknown content type: ${contentType}`);
       } else {
         const role = guild.roles.cache.find((r) => r.name === roleName);
         if (!role) {
           actionMessage =
             "❌ Content type role not found. Please contact an administrator.";
+          console.log(`[Content Selection] Role not found: ${roleName}`);
         } else {
           if (member.roles.cache.has(role.id)) {
             // Remove role
             await member.roles.remove(role);
             actionMessage = `➖ Removed **${roleName}** from your content preferences`;
             roleChanged = true;
+            console.log(
+              `[Content Selection] Removed role ${roleName} for ${user.tag}`
+            );
           } else {
             // Add role
             await member.roles.add(role);
             actionMessage = `➕ Added **${roleName}** to your content preferences`;
             roleChanged = true;
+            console.log(
+              `[Content Selection] Added role ${roleName} for ${user.tag}`
+            );
           }
         }
       }
@@ -305,6 +342,9 @@ async function handleContentSelection(
 
     // Update roster display if roles were changed
     if (roleChanged && partyFinderChannel) {
+      console.log(
+        `[Content Selection] Updating roster display for ${user.tag}`
+      );
       const { updateRosterMessage } = await import("./onReady.js");
       await updateRosterMessage(partyFinderChannel, database);
     }
@@ -313,7 +353,9 @@ async function handleContentSelection(
       content: actionMessage,
     });
 
-    console.log(`[Content Selection] ${user.tag} - ${actionMessage}`);
+    console.log(
+      `[Content Selection] Completed: ${user.tag} - ${actionMessage}`
+    );
   } catch (error) {
     console.error("Error handling content selection:", error);
     if (!interaction.replied && !interaction.deferred) {

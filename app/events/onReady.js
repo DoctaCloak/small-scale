@@ -494,7 +494,7 @@ async function createContentSelectionButtons(channel, database, contentRoles) {
   let contentMessage = messages.find(
     (msg) =>
       msg.author.id === channel.guild.members.me.id &&
-      msg.content.includes("Select Content Type")
+      msg.content.includes("Content Selection")
   );
 
   const content =
@@ -560,6 +560,12 @@ async function createContentSelectionButtons(channel, database, contentRoles) {
     });
 
     console.log(`✅ Content selection buttons set up successfully`);
+    console.log(`   - Full Roam: content_full_roam`);
+    console.log(`   - Plunder & Gather: content_plunder_gather`);
+    console.log(`   - Crystals: content_crystals`);
+    console.log(`   - Hellgates: content_hellgates`);
+    console.log(`   - Roads: content_roads`);
+    console.log(`   - Clear All: content_clear`);
   } catch (error) {
     console.error(`❌ Failed to set up content selection buttons:`, error);
   }

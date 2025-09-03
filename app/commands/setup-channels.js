@@ -37,6 +37,11 @@ export default {
       subcommand
         .setName("update-times")
         .setDescription("Force immediate update of remaining time displays")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("refresh-content")
+        .setDescription("Refresh the content selection buttons in party-finder")
     ),
   async execute(interaction, context) {
     try {
@@ -135,10 +140,44 @@ export default {
             "✅ **Roster display refreshed!**\n\nThe party-finder channel now shows the latest information including player roles and helpful tips.",
         });
       } else if (subcommand === "update-times") {
-        // Force immediate time update
-        const { updateRosterMessage } = await import(
+        await interaction.editReply({
+          content: "⏰ Forcing time display updates...",
+        });
+
+        await updateRosterMessage(partyFinderChannel, db);
+        await interaction.editReply({
+          content: "✅ Time displays updated successfully!",
+        });
+      } else if (subcommand === "refresh-content") {
+        await interaction.editReply({
+          content: "🎮 Refreshing content selection buttons...",
+        });
+
+        // Force recreation of content selection buttons
+        const { createContentSelectionButtons } = await import(
           "../../app/events/onReady.js"
         );
+
+        // Get content roles from config
+        const config = JSON.parse(
+          fs.readFileSync(path.join(process.cwd(), "config.json"), "utf-8")
+        );
+        const contentRoles = {};
+        for (const [key, roleName] of Object.entries(
+          config.ROLES.CONTENT_TYPES
+        )) {
+          const role = guild.roles.cache.find((r) => r.name === roleName);
+          if (role) contentRoles[key] = role;
+        }
+
+        await createContentSelectionButtons(
+          partyFinderChannel,
+          db,
+          contentRoles
+        );
+        await interaction.editReply({
+          content: "✅ Content selection buttons refreshed successfully!",
+        });
 
         // Update roster in party-finder channel
         const partyFinderChannel = guild.channels.cache.find(
