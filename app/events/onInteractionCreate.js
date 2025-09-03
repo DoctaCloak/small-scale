@@ -207,6 +207,7 @@ async function handleClockIn(
 
     // Update the roster message in party-finder channel if it exists
     if (partyFinderChannel) {
+      const { updateRosterMessage } = await import("./onReady.js");
       await updateRosterMessage(partyFinderChannel, database);
     }
 
@@ -268,6 +269,7 @@ async function handleClockOut(
 
     // Update the roster message in party-finder channel if it exists
     if (partyFinderChannel) {
+      const { updateRosterMessage } = await import("./onReady.js");
       await updateRosterMessage(partyFinderChannel, database);
     }
 

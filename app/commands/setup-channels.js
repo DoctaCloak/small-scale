@@ -203,31 +203,6 @@ export default {
         await interaction.editReply({
           content: "✅ Clock buttons reset to default state (both enabled)!",
         });
-
-        // Update roster in party-finder channel
-        const partyFinderChannel = guild.channels.cache.find(
-          (ch) => ch.name === config.CHANNELS.PARTY_FINDER && ch.type === 0
-        );
-
-        if (!partyFinderChannel) {
-          return await interaction.editReply({
-            content:
-              "❌ Party finder channel not found. Run `/setup-channels verify` first.",
-          });
-        }
-
-        await interaction.editReply({
-          content: "⏰ Updating time displays...",
-        });
-
-        if (updateRosterMessage) {
-          await updateRosterMessage(partyFinderChannel, db);
-        }
-
-        await interaction.editReply({
-          content:
-            "✅ **Time displays updated!**\n\nAll remaining time counters in the party-finder channel have been refreshed with the latest calculations.",
-        });
       }
 
       console.log(
