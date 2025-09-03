@@ -6,6 +6,7 @@
     "BOT": "Small Scale Bot"
   },
   "CHANNELS": {
+    "CLOCK_CHANNEL": "clock-station",
     "PARTY_FINDER": "party-finder",
     "STAFF_COMMANDS": "staff-commands"
   },

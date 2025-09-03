@@ -4,7 +4,7 @@ import { config } from "dotenv";
 // Load environment variables
 config();
 const { DISCORD_TOKEN } = process.env;
-
+console.debug("DISCORD_TOKEN IS:", DISCORD_TOKEN);
 if (!DISCORD_TOKEN) {
   console.error("❌ DISCORD_TOKEN not found in .env file");
   console.error("   Please set your Discord bot token in the .env file");

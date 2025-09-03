@@ -9,6 +9,7 @@ const configPath = path.resolve(
 );
 const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 
+const CLOCK_CHANNEL_NAME = config.CHANNELS.CLOCK_CHANNEL;
 const PARTY_FINDER_CHANNEL_NAME = config.CHANNELS.PARTY_FINDER;
 const CLOCKED_IN_ROLE_NAME = config.ROLES.CLOCKED_IN;
 
@@ -57,36 +58,6 @@ export default async function onReady(client, database) {
 async function initializeRosterSystem(guild, database) {
   console.log(`Initializing roster system for guild: ${guild.name}`);
 
-  // Ensure the party-finder channel exists
-  let partyFinderChannel = guild.channels.cache.find(
-    (ch) =>
-      ch.name === PARTY_FINDER_CHANNEL_NAME && ch.type === ChannelType.GuildText
-  );
-
-  if (!partyFinderChannel) {
-    console.log(`Creating ${PARTY_FINDER_CHANNEL_NAME} channel...`);
-    partyFinderChannel = await guild.channels.create({
-      name: PARTY_FINDER_CHANNEL_NAME,
-      type: ChannelType.GuildText,
-      topic: "Small-scale party finder - Clock in to find others playing!",
-      permissionOverwrites: [
-        {
-          id: guild.id, // @everyone
-          deny: [PermissionsBitField.Flags.SendMessages],
-          allow: [
-            PermissionsBitField.Flags.ReadMessageHistory,
-            PermissionsBitField.Flags.UseExternalEmojis,
-          ],
-        },
-        {
-          id: guild.roles.everyone.id,
-          deny: [PermissionsBitField.Flags.SendMessages],
-        },
-      ],
-    });
-    console.log(`Created ${PARTY_FINDER_CHANNEL_NAME} channel`);
-  }
-
   // Ensure the Clocked In role exists
   let clockedInRole = guild.roles.cache.find(
     (role) => role.name === CLOCKED_IN_ROLE_NAME
@@ -101,10 +72,120 @@ async function initializeRosterSystem(guild, database) {
     console.log(`Created ${CLOCKED_IN_ROLE_NAME} role`);
   }
 
-  // Create or update the roster message
+  // Ensure the clock-station channel exists (visible to everyone, read-only except for bot)
+  let clockChannel = guild.channels.cache.find(
+    (ch) => ch.name === CLOCK_CHANNEL_NAME && ch.type === ChannelType.GuildText
+  );
+
+  if (!clockChannel) {
+    console.log(`Creating ${CLOCK_CHANNEL_NAME} channel...`);
+    clockChannel = await guild.channels.create({
+      name: CLOCK_CHANNEL_NAME,
+      type: ChannelType.GuildText,
+      topic:
+        "Clock in/out station - Use the buttons below to manage your status",
+      permissionOverwrites: [
+        {
+          id: guild.id, // @everyone
+          deny: [PermissionsBitField.Flags.SendMessages],
+          allow: [
+            PermissionsBitField.Flags.ReadMessageHistory,
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.UseExternalEmojis,
+          ],
+        },
+        {
+          id: guild.roles.everyone.id,
+          deny: [PermissionsBitField.Flags.SendMessages],
+          allow: [PermissionsBitField.Flags.ViewChannel],
+        },
+      ],
+    });
+    console.log(`Created ${CLOCK_CHANNEL_NAME} channel`);
+  }
+
+  // Ensure the party-finder channel exists (only visible to clocked-in users)
+  let partyFinderChannel = guild.channels.cache.find(
+    (ch) =>
+      ch.name === PARTY_FINDER_CHANNEL_NAME && ch.type === ChannelType.GuildText
+  );
+
+  if (!partyFinderChannel) {
+    console.log(`Creating ${PARTY_FINDER_CHANNEL_NAME} channel...`);
+    partyFinderChannel = await guild.channels.create({
+      name: PARTY_FINDER_CHANNEL_NAME,
+      type: ChannelType.GuildText,
+      topic: "Party finder - Only visible to clocked-in users",
+      permissionOverwrites: [
+        {
+          id: guild.id, // @everyone
+          deny: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+          ],
+        },
+        {
+          id: clockedInRole.id, // Clocked In role
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages,
+            PermissionsBitField.Flags.ReadMessageHistory,
+            PermissionsBitField.Flags.UseExternalEmojis,
+          ],
+        },
+      ],
+    });
+    console.log(`Created ${PARTY_FINDER_CHANNEL_NAME} channel`);
+  }
+
+  // Create clock buttons in the clock-station channel
+  await createClockButtons(clockChannel, database);
+
+  // Create roster display in the party-finder channel
   await updateRosterMessage(partyFinderChannel, database);
 
   console.log(`Roster system initialized for guild: ${guild.name}`);
+}
+
+async function createClockButtons(channel, database) {
+  // Find existing clock button message
+  const pins = await channel.messages.fetchPinned();
+  let clockMessage = pins.find(
+    (msg) => msg.author.id === channel.guild.members.me.id
+  );
+
+  const content =
+    "**⏰ Clock Station**\n\n" +
+    "Use the buttons below to clock in or out. Clocking in will give you access to the party-finder channel!\n\n" +
+    "• **Clock In**: Get the Clocked In role and access to party-finder\n" +
+    "• **Clock Out**: Remove the role and lose access to party-finder\n\n" +
+    "*You'll be automatically clocked out after 4 hours.*";
+
+  if (clockMessage) {
+    // Update existing message
+    await clockMessage.edit({ content });
+  } else {
+    // Create new message and pin it
+    clockMessage = await channel.send({ content });
+    await clockMessage.pin();
+  }
+
+  // Add buttons to the message
+  const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = await import(
+    "discord.js"
+  );
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("clock_in")
+      .setLabel("🕐 Clock In")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId("clock_out")
+      .setLabel("🕒 Clock Out")
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await clockMessage.edit({ content, components: [row] });
 }
 
 async function updateRosterMessage(channel, database) {

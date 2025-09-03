@@ -9,12 +9,42 @@ const configPath = path.resolve(
 );
 const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 
+const CLOCK_CHANNEL_NAME = config.CHANNELS.CLOCK_CHANNEL;
 const PARTY_FINDER_CHANNEL_NAME = config.CHANNELS.PARTY_FINDER;
 const CLOCKED_IN_ROLE_NAME = config.ROLES.CLOCKED_IN;
 const AUTO_CLOCK_OUT_HOURS = config.TIMERS.AUTO_CLOCK_OUT_HOURS;
 
 export default async function onInteractionCreate(client, database) {
   client.on("interactionCreate", async (interaction) => {
+    // Handle slash commands
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+
+      try {
+        // Pass both interaction and context to the command
+        await command.execute(interaction, { db: database, client });
+      } catch (error) {
+        console.error(
+          `Error executing command ${interaction.commandName}:`,
+          error
+        );
+
+        const errorMessage = {
+          content: "There was an error while executing this command!",
+          ephemeral: true,
+        };
+
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(errorMessage);
+        } else {
+          await interaction.reply(errorMessage);
+        }
+      }
+      return;
+    }
+
+    // Handle button interactions
     if (!interaction.isButton()) return;
 
     const { customId } = interaction;
@@ -24,19 +54,26 @@ export default async function onInteractionCreate(client, database) {
 
     if (!guild || !member) return;
 
-    // Ensure we're in the party-finder channel
+    // Ensure we're in either the clock-station or party-finder channel
+    const clockChannel = guild.channels.cache.find(
+      (ch) =>
+        ch.name === CLOCK_CHANNEL_NAME && ch.type === ChannelType.GuildText
+    );
+
     const partyFinderChannel = guild.channels.cache.find(
       (ch) =>
         ch.name === PARTY_FINDER_CHANNEL_NAME &&
         ch.type === ChannelType.GuildText
     );
 
-    if (
-      !partyFinderChannel ||
-      interaction.channel.id !== partyFinderChannel.id
-    ) {
+    const isValidChannel =
+      (clockChannel && interaction.channel.id === clockChannel.id) ||
+      (partyFinderChannel && interaction.channel.id === partyFinderChannel.id);
+
+    if (!isValidChannel) {
       return await interaction.reply({
-        content: "This button can only be used in the party-finder channel.",
+        content:
+          "This button can only be used in the clock-station or party-finder channels.",
         ephemeral: true,
       });
     }
@@ -63,7 +100,8 @@ export default async function onInteractionCreate(client, database) {
           rosterCollection,
           clockedInRole,
           partyFinderChannel,
-          database
+          database,
+          clockChannel
         );
       } else if (customId === "clock_out") {
         await handleClockOut(
@@ -71,7 +109,8 @@ export default async function onInteractionCreate(client, database) {
           rosterCollection,
           clockedInRole,
           partyFinderChannel,
-          database
+          database,
+          clockChannel
         );
       }
     } catch (error) {
@@ -89,7 +128,8 @@ async function handleClockIn(
   rosterCollection,
   clockedInRole,
   partyFinderChannel,
-  database
+  database,
+  clockChannel
 ) {
   const user = interaction.user;
   const member = interaction.member;
@@ -127,11 +167,13 @@ async function handleClockIn(
     await member.roles.add(clockedInRole);
   }
 
-  // Update the roster message
-  await updateRosterMessage(partyFinderChannel, database);
+  // Update the roster message in party-finder channel if it exists
+  if (partyFinderChannel) {
+    await updateRosterMessage(partyFinderChannel, database);
+  }
 
   await interaction.reply({
-    content: `✅ You've been clocked in! You'll be automatically clocked out after ${AUTO_CLOCK_OUT_HOURS} hours.\n\nYou now have access to party channels and can see who's playing!`,
+    content: `✅ You've been clocked in! You'll be automatically clocked out after ${AUTO_CLOCK_OUT_HOURS} hours.\n\nYou now have access to the party-finder channel!`,
     ephemeral: true,
   });
 
@@ -143,7 +185,8 @@ async function handleClockOut(
   rosterCollection,
   clockedInRole,
   partyFinderChannel,
-  database
+  database,
+  clockChannel
 ) {
   const user = interaction.user;
   const member = interaction.member;
@@ -168,8 +211,10 @@ async function handleClockOut(
     await member.roles.remove(clockedInRole);
   }
 
-  // Update the roster message
-  await updateRosterMessage(partyFinderChannel, database);
+  // Update the roster message in party-finder channel if it exists
+  if (partyFinderChannel) {
+    await updateRosterMessage(partyFinderChannel, database);
+  }
 
   await interaction.reply({
     content: "👋 You have been clocked out successfully!",
