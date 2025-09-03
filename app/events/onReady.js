@@ -14,7 +14,7 @@ const CLOCKED_IN_ROLE_NAME = config.ROLES.CLOCKED_IN;
 
 export default async function onReady(client, database) {
   // Check if bot is properly logged in
-  if (!client.user) {
+  if (!client.guilds) {
     console.error(
       "❌ Bot failed to login to Discord. Please check your DISCORD_TOKEN in .env file."
     );
@@ -22,10 +22,9 @@ export default async function onReady(client, database) {
       '💡 Make sure you\'ve replaced "YOUR_ACTUAL_DISCORD_BOT_TOKEN_HERE" with your real bot token.'
     );
     return;
+  } else {
+    console.log(`📊 Connected to ${client.guilds.cache.size} server(s)`);
   }
-
-  console.log(`✅ Small Scale Bot is online as ${client.user.tag}!`);
-  console.log(`📊 Connected to ${client.guilds.cache.size} server(s)`);
 
   // Initialize roster system when bot starts
   for (const guild of client.guilds.cache.values()) {
